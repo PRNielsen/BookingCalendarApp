@@ -1,0 +1,199 @@
+﻿@page "/calendar"
+@rendermode InteractiveServer
+@using YourCalendarAppServer.Models
+
+<h3>Online Booking Hairdresser</h3>
+<h3>@currentDate.ToString("MMM yyyy")</h3>
+
+<table class="table">
+    <thead>
+        <tr>
+            @foreach (var day in daysOfWeek)
+            {
+                <th>@day</th>
+            }
+        </tr>
+    </thead>
+    <tbody>
+        @for (int week = 0; week < weeksInMonth; week++)
+        {
+            <tr>
+                @for (int dayOfWeek = 0; dayOfWeek < daysInWeek; dayOfWeek++)
+                {
+                    int dayIndex = week * daysInWeek + dayOfWeek;
+                    if (dayIndex >= days.Count)
+                        break;
+
+                    DateTime currentDateForDay = currentDate.AddDays(dayIndex); // Adjust for 0-based index
+
+                    int day = days[dayIndex];
+                    <td @onclick="() => ShowAppointmentForm()">
+                        @if (day > 0)
+                        {
+                            <div>@day</div>
+                        }
+                    </td>
+                }
+            </tr>
+
+        }
+    </tbody>
+</table>
+
+@if (showAppointmentForm)
+{
+    <div>
+        <h4>Add</h4>
+        <form>
+            <div class="form-group">
+                <label for="addDate">Date:</label>
+                <input type="date" id="addDate" @bind="newAppointment.Date" />
+            </div>
+
+            <div class="form-group">
+                <label for="addStartTime">Start Time:</label>
+                <input type="time" id="addStartTime" @bind="newAppointment.StartTime" />
+            </div>
+
+            <div class="form-group">
+                <label for="addNote">Note:</label>
+                <textarea id="addNote" @bind="newAppointment.Note"></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="addSelectedService">Select Service:</label>
+                <select id="addSelectedService" @onchange="HandleServiceSelection">
+                    @foreach (var service in services)
+                    {
+                        <option value="@service.Name">@service.Name - Duration: @service.Duration.TotalMinutes minutes - Price: @service.Price DKK</option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="calculatedEndTime">End Time</label>
+                <input type="time" id="calculatedEndTime" @bind="newAppointment.EndTime" readonly />
+            </div>
+
+            <button type="submit" @onclick="SaveAppointment">Save</button>
+        </form>
+    </div>
+}
+
+<div>
+    <h4>Your Appointments</h4>
+    @if (appointments.Any())
+    {
+        <div>
+            <ul>
+                @foreach (var appointment in appointments)
+                {
+                    <li @onclick="() => EditAppointment(appointment)">
+                        @($"Appointment on {appointment.Date.ToShortDateString()} at {appointment.StartTime.ToString("hh:mm tt")}")
+                    </li>
+                }
+            </ul>
+        </div>
+    }
+    else
+    {
+        <p>No appointments available.</p>
+    }
+</div>
+
+
+
+@code {
+    private List<string> daysOfWeek = new List<string> { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    private List<int> days;
+    private int weeksInMonth;
+    private const int daysInWeek = 7;
+    private DateTime currentDate = DateTime.Now;
+
+    private Appointment newAppointment = new Appointment();
+    private DateTime calculatedEndTime;
+
+    private bool showAppointmentForm = false;
+
+    private List<Appointment> appointments = new List<Appointment>();
+
+    private List<Service> services = new List<Service>
+    {
+        new Service { Name = "Haircut", Duration = TimeSpan.FromMinutes(20), Price = 100.00 },
+        new Service { Name = "Haircut with hairwash", Duration = TimeSpan.FromMinutes(30), Price = 125.00 },
+        new Service { Name = "Haircut with beard trim", Duration = TimeSpan.FromMinutes(40), Price = 150.00 }
+    };
+
+    protected override void OnInitialized()
+    {
+        InitializeCalendar();
+    }
+
+    private void InitializeCalendar()
+    {
+        DateTime firstDayOfMonth = new DateTime(currentDate.Year, currentDate.Month, 1);
+
+        // Calculate the offset to the first day of the week
+        int daysOffset = (int)firstDayOfMonth.DayOfWeek;
+
+        // Fill in the days with empty slots for days before the start of the month
+        days = Enumerable.Range(1, DateTime.DaysInMonth(currentDate.Year, currentDate.Month) + daysOffset - 1)
+                         .Select(day => day <= daysOffset ? 0 : day - daysOffset)
+                         .ToList();
+
+        weeksInMonth = (int)Math.Ceiling((double)days.Count / daysInWeek);
+    }
+
+    private void ShowAppointmentForm()
+    {
+        showAppointmentForm = true;
+
+    }
+
+    private void HandleServiceSelection(ChangeEventArgs args)
+    {
+        // Update the SelectedService based on the selected value
+        newAppointment.SelectedService = services.FirstOrDefault(s => s.Name == args.Value.ToString());
+
+        // Recalculate the EndTime based on the new SelectedService and StartTime
+        CalculateEndTime();
+    }
+
+    private void CalculateEndTime()
+    {
+        // Check if StartTime and SelectedService are not null before calculating
+        if (newAppointment.StartTime != default && newAppointment.SelectedService != null)
+        {
+            newAppointment.EndTime = newAppointment.StartTime.Add(newAppointment.SelectedService.Duration);
+            calculatedEndTime = newAppointment.EndTime;
+        }
+    }
+
+    private void SaveAppointment()
+    {
+        // Save appointment to list
+        appointments.Add(newAppointment);
+
+        // Reset form fields and hide the form after saving
+        newAppointment = new Appointment(); // Reset the newAppointment for the next entry
+        showAppointmentForm = false;
+
+        // Manually trigger a UI update
+        StateHasChanged();
+    }
+
+    private void EditAppointment(Appointment appointment)
+    {
+        showAppointmentForm = true;
+
+        // Populate the form fields with the details of the selected appointment
+        newAppointment.Date = appointment.Date;
+        newAppointment.StartTime = appointment.StartTime;
+        newAppointment.Note = appointment.Note;
+        newAppointment.SelectedService = appointment.SelectedService;
+
+        // Recalculate the EndTime based on the new SelectedService and StartTime
+        CalculateEndTime();
+    }
+    
+}
